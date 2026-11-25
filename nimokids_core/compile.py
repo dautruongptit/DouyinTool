@@ -136,6 +136,20 @@ def wrap_text(text, measure, max_w):
         lines.append(cur)
     return [l for l in lines if l] or [""]
 
+def padded_times(spans, pad):
+    """Kéo dài mỗi mốc (a, b) sớm/trễ `pad` giây. Hai câu liền nhau chia đôi khoảng hở giữa chúng
+    (khung nối liền, chữ không chồng lên nhau)."""
+    out = []
+    n = len(spans)
+    for i, (a, b) in enumerate(spans):
+        ta, tb = max(0.0, a - pad), b + pad
+        if i > 0 and a - spans[i - 1][1] < 2 * pad:
+            ta = max(ta, min(a, (spans[i - 1][1] + a) / 2))
+        if i + 1 < n and spans[i + 1][0] - b < 2 * pad:
+            tb = min(tb, max(b, (b + spans[i + 1][0]) / 2))
+        out.append((ta, tb))
+    return out
+
 def plan_layout(w, h, cover, vsub, cues, font_path):
     """Tính khung che (band) và chỗ đặt phụ đề Việt.
     Khung che luôn phủ hết vùng chữ Trung đã dò/đặt VÀ dài, cao hơn cả dòng phụ đề Việt dài nhất."""
@@ -164,7 +178,44 @@ def plan_layout(w, h, cover, vsub, cues, font_path):
         by = min(max(0, cy - bh / 2), h - bh)
         band = tuple(int(round(v / 2)) * 2 for v in (bx, by, bw, bh))
         cy = band[1] + band[3] / 2
-    return dict(fs=fs, band=band, cx=w / 2, cy=cy, wrapped=wrapped, vw=vw, lines=vl)
+    boxes = []
+    if cover and vsub and cover.get("fit") and wrapped:
+        # Khung che bám theo từng câu phụ đề: rộng/cao vừa chữ Việt của câu đó, chỉ hiện đúng lúc câu hiện.
+        # Chiều cao tối thiểu = chiều cao dòng chữ Trung (để che hết chữ Trung theo chiều dọc).
+        cy_c = h * cover["top"] / 100 + h * cover["height"] / 100 / 2
+        min_h = h * cover["height"] / 100
+        min_w = w * cover.get("min_width", 0) / 100
+        # Khung che hiện SỚM và tắt TRỄ hơn câu phụ đề `pad` giây mỗi đầu, để không lộ chữ Trung cũ
+        # khi mốc phụ đề Việt lệch/ngắn hơn mốc chữ Trung (hai khung liền nhau tự nối vào nhau)
+        pad = max(0.0, float(cover.get("pad", 0.5)))
+        # Chữ Việt dùng CHÍNH mốc đã kéo dài này, nên khung che và chữ xuất hiện / biến mất cùng một lúc
+        times = padded_times([(a, b) for a, b, _ in wrapped], pad)
+        wrapped = [(ta, tb, lines) for (ta, tb), (_, _, lines) in zip(times, wrapped)]
+        for a, b, lines in wrapped:
+            tw = max(measure(l) for l in lines)
+            fw = min(w, max(tw + fs * 1.2, min_w))
+            fh = min(h, max(len(lines) * fs * 1.25 + fs * 0.5, min_h))
+            fx = (w - fw) / 2
+            fy = min(max(0, cy_c - fh / 2), h - fh)
+            boxes.append((a, b) + tuple(int(round(v / 2)) * 2 for v in (fx, fy, fw, fh)))
+        x0, y0 = min(bx for _, _, bx, _, _, _ in boxes), min(by for _, _, _, by, _, _ in boxes)
+        x1 = max(bx + bw for _, _, bx, _, bw, _ in boxes)
+        y1 = max(by + bh for _, _, _, by, _, bh in boxes)
+        band = tuple(int(round(v / 2)) * 2 for v in (x0, y0, x1 - x0, y1 - y0))  # vùng làm mờ (hợp của mọi khung)
+        cy = cy_c
+    return dict(fs=fs, band=band, cx=w / 2, cy=cy, wrapped=wrapped, vw=vw, lines=vl, boxes=boxes,
+                cover_style=(cover or {}).get("style"))
+
+def ass_rect(a, b, x, y, w, h, color="&H000000&", alpha="&H00&", layer=0):
+    """Một câu ASS vẽ hình chữ nhật (x, y, w, h) trong khoảng thời gian a..b."""
+    return (f"Dialogue: {layer},{ass_time(a)},{ass_time(b)},Vi,,0,0,0,,"
+            f"{{\\an7\\pos(0,0)\\p1\\bord0\\shad0\\1c{color}\\1a{alpha}}}"
+            f"m {x} {y} l {x + w} {y} {x + w} {y + h} {x} {y + h}{{\\p0}}")
+
+def shift_layout(lay, t):
+    """Dịch mốc thời gian lùi t giây (dùng cho xem thử 1 khung hình)."""
+    return dict(lay, wrapped=[(a - t, b - t, ln) for a, b, ln in lay["wrapped"]],
+                boxes=[(a - t, b - t) + tuple(r) for a, b, *r in lay.get("boxes", [])])
 
 def make_ass(w, h, lay, family):
     fs = lay["fs"]
@@ -175,10 +226,19 @@ def make_ass(w, h, lay, family):
             "\n\n[Events]\nFormat: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\n"
             % (w, h, family, fs, max(2, fs // 14)))
     rows = []
+    if lay.get("boxes") and lay.get("cover_style") == "box":
+        # Hộp đen bám câu: vẽ ngay trong file phụ đề, dưới lớp chữ (Layer 0 < Layer 1)
+        rows += [ass_rect(a, b, x, y, bw, bh, "&H000000&", "&H14&", 0) for a, b, x, y, bw, bh in lay["boxes"]]
     for a, b, lines in lay["wrapped"]:
         txt = "\\N".join(l.replace("{", "(").replace("}", ")") for l in lines)
-        rows.append(f"Dialogue: 0,{ass_time(a)},{ass_time(b)},Vi,,0,0,0,,{{\\an5\\pos({lay['cx']:.0f},{lay['cy']:.0f})}}{txt}")
+        rows.append(f"Dialogue: 1,{ass_time(a)},{ass_time(b)},Vi,,0,0,0,,{{\\an5\\pos({lay['cx']:.0f},{lay['cy']:.0f})}}{txt}")
     return head + "\n".join(rows) + "\n"
+
+def make_mask_ass(w, h, lay, family):
+    """File ASS vẽ các khung màu trắng (nền đen) - dùng làm mặt nạ để chỉ làm mờ trong khung của từng câu."""
+    base = make_ass(w, h, dict(lay, wrapped=[], boxes=[], cover_style=None), family)
+    return base + "\n".join(ass_rect(a, b, x, y, bw, bh, "&HFFFFFF&", "&H00&", 0)
+                              for a, b, x, y, bw, bh in lay["boxes"]) + "\n"
 
 def build_filter(chosen, w, h, fps, wm, cover=None, lay=None, audio=True, tops=None):
     """wm: dict(mode='text'|'logo'|'none', text, font, fontsize, opacity, speed, margin, logo_h)"""
@@ -206,7 +266,22 @@ def build_filter(chosen, w, h, fps, wm, cover=None, lay=None, audio=True, tops=N
         parts.append(title_filters(tops, cur, "vtit"))
         cur = "vtit"
     band = lay["band"] if lay else None
-    if cover and band:
+    if cover and band and lay.get("boxes") and cover["style"] == "box":
+        pass  # hộp đen bám câu đã vẽ trong sub_vi.ass
+    elif cover and band and lay.get("boxes"):
+        # Làm mờ bám câu: làm mờ MỘT LẦN vùng hợp của mọi khung, dùng mặt nạ ASS (trắng = trong khung của câu đang hiện)
+        # làm kênh alpha cho lớp mờ rồi chồng lên video. (Không dùng maskedmerge: mặt nạ gray bị trộn sai ở các lớp màu.)
+        bx, by, bw, bh = band
+        dur = sum(d for _, d, _ in chosen) + 3
+        parts.append(f"[{cur}]split=2[cf1][cf2];[cf2]crop={bw}:{bh}:{bx}:{by},"
+                     f"boxblur=luma_radius={max(1, min(bh // 2 - 1, 30))}:luma_power=3:"
+                     f"chroma_radius={max(1, min(bh // 4 - 1, 15))}:chroma_power=3,"
+                     f"eq=brightness=-0.15[cvb];"
+                     f"color=c=black:s={w}x{h}:r={fps}:d={dur:.3f},ass=cover_mask.ass:fontsdir=fonts,"
+                     f"crop={bw}:{bh}:{bx}:{by},format=gray[cmask];"
+                     f"[cvb][cmask]alphamerge[cva];[cf1][cva]overlay={bx}:{by}:format=auto:shortest=1[vcov]")
+        cur = "vcov"
+    elif cover and band:
         bx, by, bw, bh = band
         if cover["style"] == "box":
             parts.append(f"[{cur}]drawbox=x={bx}:y={by}:w={bw}:h={bh}:color=black@0.92:t=fill[vcov]")
@@ -296,12 +371,18 @@ def run_compile(cfg, log, prog, stop, dry=False):
         lay = plan_layout(w, h, cover, vs, cues, sf)
         if vs:
             (tmp / "sub_vi.ass").write_text(make_ass(w, h, lay, font_family(sf)), encoding="utf-8")
+            if lay["boxes"]:
+                (tmp / "cover_mask.ass").write_text(make_mask_ass(w, h, lay, font_family(sf)), encoding="utf-8")
+            (tmp / "fonts").mkdir(exist_ok=True)
             if sf and Path(sf).exists():
-                (tmp / "fonts").mkdir(exist_ok=True)
                 shutil.copyfile(sf, tmp / "fonts" / ("subfont" + Path(sf).suffix))
         if cover and lay["band"]:
             bx, by, bw, bh = lay["band"]
-            log(f"Khung che chữ cũ: rộng {bw}px ({bw * 100 // w}% khung hình), cao {bh}px"
+            if lay["boxes"]:
+                log(f"Khung che bám theo từng câu phụ đề ({len(lay['boxes'])} câu, che sớm/trễ thêm {cover.get('pad', 0.5):g}s): rộng nhất {bw}px "
+                    f"({bw * 100 // w}% khung hình), cao nhất {bh}px, kiểu {'hộp đen' if cover['style'] == 'box' else 'làm mờ'}")
+            else:
+                log(f"Khung che chữ cũ: rộng {bw}px ({bw * 100 // w}% khung hình), cao {bh}px"
                 + (f"; dòng phụ đề Việt dài nhất {int(lay['vw'])}px, tối đa {lay['lines']} dòng" if vs else ""))
         tops = []
         tt = cfg.get("titles")
@@ -504,9 +585,8 @@ def preview_frame(cfg, log, dest):
         sf = default_font()
         lay = plan_layout(w, h, cover, vs if cues else None, cues, sf)
         if cues:
-            (tmp / "sub_vi.ass").write_text(make_ass(w, h, lay, font_family(sf)), encoding="utf-8")
+            (tmp / "fonts").mkdir(exist_ok=True)
             if sf and Path(sf).exists():
-                (tmp / "fonts").mkdir(exist_ok=True)
                 shutil.copyfile(sf, tmp / "fonts" / ("subfont" + Path(sf).suffix))
         tops = []
         if tt and t_title is not None:
@@ -519,9 +599,10 @@ def preview_frame(cfg, log, dest):
             cmd += ["-loop", "1", "-t", "30", "-i", str(Path(wm["logo"]).resolve())]
         # -ss đặt trước -i làm mốc thời gian về 0, nên dịch mốc phụ đề lùi đúng t giây rồi mới dựng khung
         if cues:
-            shifted = [(a - t, b - t, ln) for a, b, ln in lay["wrapped"]]
-            lay2 = dict(lay, wrapped=shifted)
+            lay2 = shift_layout(lay, t)
             (tmp / "sub_vi.ass").write_text(make_ass(w, h, lay2, font_family(sf)), encoding="utf-8")
+            if lay2["boxes"]:
+                (tmp / "cover_mask.ass").write_text(make_mask_ass(w, h, lay2, font_family(sf)), encoding="utf-8")
         cmd += ["-filter_complex", fc, "-map", "[vout]", "-frames:v", "1", str(Path(dest).resolve())]
         r = subprocess.run(cmd, cwd=str(tmp), capture_output=True, text=True, encoding="utf-8", errors="replace",
                            creationflags=NO_WINDOW)

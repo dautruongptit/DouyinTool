@@ -176,7 +176,9 @@ def close_login_popup(page, log=None, state=None):
 # Trang kênh vẫn hiện lưới video dù chưa đăng nhập. Đọc link /video/<id>, tiêu đề và ảnh bìa từ lưới đó.
 GRID_JS = r"""() => {
   const rows = [];
-  for (const a of document.querySelectorAll('a[href*="/video/"]')) {
+  // Ưu tiên khung bài đăng của kênh, tránh lẫn video gợi ý của kênh khác
+  const root = document.querySelector('[data-e2e="user-post-list"]') || document;
+  for (const a of root.querySelectorAll('a[href*="/video/"]')) {
     const href = a.getAttribute('href') || '';
     const id = (href.split('/video/')[1] || '').split(/[^0-9]/)[0];
     if (!id) continue;
@@ -293,6 +295,37 @@ def resolve_dom_videos(need, browser, log, prog, stop):
     log(f"Đã lấy được link của {ok}/{len(need)} video.")
 
 
+def open_for_login(cfg, log, prog, wait_user, stop):
+    """Mở Chrome (cùng profile với lúc lấy danh sách) tới douyin.com để người dùng tự đăng nhập
+    (quét mã QR). Đăng nhập được lưu trong profile, các lần sau không phải làm lại.
+    Chờ đến khi người dùng bấm Tiếp tục (wait_user) hoặc bấm Dừng."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        raise RuntimeError("Thiếu thư viện. Chạy: python -m pip install playwright requests")
+    log("Đang mở Chrome tới douyin.com ...")
+    with sync_playwright() as p:
+        ctx = p.chromium.launch_persistent_context(
+            cfg["profile"], channel=cfg["channel"], headless=False,
+            viewport={"width": 1280, "height": 900},
+            args=["--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding",
+                  "--disable-background-timer-throttling"])
+        page = ctx.pages[0] if ctx.pages else ctx.new_page()
+        page.goto("https://www.douyin.com/", wait_until="domcontentloaded")
+        log("Chrome đã mở douyin.com. Mở 'Màn hình Chrome', đăng nhập (quét mã QR bằng app Douyin), "
+            "xong bấm 'Tiếp tục'. Đăng nhập được lưu cho các lần sau.")
+
+        def ready():
+            page.wait_for_timeout(200)  # cho Playwright xử lý sự kiện của trang trong lúc chờ
+            return False
+        wait_user(ready)
+        ctx.close()
+    if stop.is_set():
+        raise Stopped()
+    log("Đã đóng Chrome. Đăng nhập (nếu đã làm) được lưu trong profile.")
+    return "ok"
+
+
 def collect_list(cfg, log, prog, wait_user, stop):
     """Bước 1: dùng Chrome lấy danh sách video + cookie. Trả về dict(items, cookies, ua, total)."""
     try:
@@ -404,21 +437,36 @@ def collect_list(cfg, log, prog, wait_user, stop):
             except Stopped:
                 ctx.close()
                 raise
-            if rows:
-                for r in rows:
-                    collected[r["id"]] = dom_to_aweme(r)
-                info["has_more"] = False   # đã cuộn hết lưới, bỏ qua vòng cuộn theo API bên dưới
-                log(f"Đã đọc {len(rows)} video từ trang kênh. (Link tải sẽ lấy lúc bấm tải video.)")
-            else:
+            for r in rows:
+                collected.setdefault(r["id"], dom_to_aweme(r))  # không đè lên dữ liệu API (API có sẵn link tải)
+
+            def has_api():
+                return any(not a.get("_dom") for a in collected.values())
+
+            enough = (limit and len(collected) >= limit) or (info["total"] and len(collected) >= info["total"])
+            if not enough and not has_api():
+                # Thiếu video thì KHÔNG coi là xong: giữ Chrome mở để người dùng đăng nhập rồi lấy tiếp
+                log(f"Cảnh báo: mới đọc được {len(collected)}/{info['total'] or '?'} video vì Douyin không trả phần còn lại. "
+                    "Đăng nhập trong cửa sổ Chrome rồi bấm tiếp tục để lấy đủ, hoặc bấm tiếp tục luôn để dùng "
+                    "danh sách thiếu này.")
                 if hidden:
                     show_window()
-                log("Không đọc được video nào từ trang. Cửa sổ Chrome đã hiện ra: xử lý đăng nhập/captcha xong, "
-                    "tool sẽ TỰ chạy tiếp khi thấy danh sách video (hoặc bấm nút 'Đã thấy danh sách...').")
 
                 def ready():
                     page.wait_for_timeout(200)  # cho Playwright nhận phản hồi mạng
-                    return bool(collected)
+                    return has_api()
                 wait_user(ready)
+                if not stop.is_set() and not has_api():
+                    log("Tải lại trang kênh để lấy tiếp danh sách...")
+                    try:
+                        page.goto(cfg["url"], wait_until="domcontentloaded")
+                        t1 = time.time()
+                        while not has_api() and not stop.is_set() and time.time() - t1 < 15:
+                            page.wait_for_timeout(500)
+                    except Exception as e:
+                        log(f"Không tải lại được trang: {e}")
+            if not has_api():
+                info["has_more"] = False  # chỉ có danh sách đọc từ trang, cuộn tiếp cũng không ra thêm
         if stop.is_set():
             ctx.close()
             raise Stopped()

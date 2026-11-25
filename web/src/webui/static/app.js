@@ -33,7 +33,7 @@ document.querySelectorAll(".tab").forEach((t) => {
 });
 
 // ---------- poll job ----------
-const ACTION_BTNS = ["b_list", "b_download", "b_dry", "b_render", "b_sub", "w_genlogo"];
+const ACTION_BTNS = ["b_list", "b_login", "b_download", "b_dry", "b_render", "b_sub", "w_genlogo"];
 let state = { cursor: 0, kind: null, lastBusy: false };
 
 function setBusy(b) {
@@ -96,6 +96,11 @@ $("b_list").onclick = async () => {
   } catch (e) { state.kind = null; toast(e.message); $("d_status").textContent = "Lỗi: " + e.message; }
 };
 
+$("b_login").onclick = async () => {
+  try { state.kind = "login"; await post("/api/douyin/login"); }
+  catch (e) { state.kind = null; toast(e.message); }
+};
+
 async function loadVideos() {
   const d = await get("/api/douyin/videos");
   videos = d.items || [];
@@ -116,7 +121,9 @@ async function loadVideos() {
     tb.appendChild(tr);
   });
   const tot = d.total ? "/" + d.total : "";
+  const missing = d.total ? d.total - videos.length : 0;
   $("d_status").textContent = "Đã lấy " + videos.length + tot + " video" +
+    (missing > 0 ? " (CÒN THIẾU " + missing + ")" : "") +
     (d.folder ? "  •  thư mục: " + d.folder : "") + ".  Tích chọn rồi bấm “Tải video đã chọn”.";
   refreshDownloadBtn();
 }

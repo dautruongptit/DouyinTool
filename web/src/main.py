@@ -150,6 +150,20 @@ def douyin_list(req: ListReq):
     return {"ok": True}
 
 
+@app.post("/api/douyin/login")
+def douyin_login():
+    """Mở Chrome trên màn ảo để người dùng đăng nhập Douyin một lần (xem qua noVNC)."""
+    _busy_guard()
+    cfg = dict(profile=str(config.BROWSER_PROFILE), channel=config.BROWSER_CHANNEL)
+
+    def fn(job):
+        return douyin.open_for_login(cfg, job.log, job.prog, job.wait_user, job.stop)
+
+    if not manager.start("Đăng nhập Douyin", fn):
+        _busy_guard()
+    return {"ok": True}
+
+
 @app.get("/api/douyin/videos")
 def douyin_videos():
     out = manager.last_out

@@ -19,6 +19,34 @@ Phiên bản hiện tại nằm ở `nimokids_core/__init__.py` (`__version__`),
 
 ---
 
+## [2.12.2] – 25/11/2026
+
+### Sửa lỗi
+- **[Lõi]** Lấy danh sách thiếu video: khi chỉ đọc được một phần từ trang kênh, tool không còn báo xong và đóng Chrome mà giữ Chrome mở chờ đăng nhập, sau đó lấy tiếp phần còn lại. Dữ liệu API không còn bị danh sách đọc từ trang ghi đè.
+- **[Lõi]** Đọc lưới video: ưu tiên khung bài đăng của kênh, tránh lẫn video gợi ý.
+- **[Web]** Dòng trạng thái ghi rõ còn thiếu bao nhiêu video.
+
+## [2.12.1] – 25/11/2026
+
+### Thêm
+- **[Lõi]** Khung che bám câu hiện sớm và tắt trễ hơn câu phụ đề (`cover["pad"]`, mặc định 0,5 giây mỗi đầu), tránh lộ chữ Trung cũ khi mốc phụ đề Việt lệch hoặc ngắn hơn mốc chữ Trung; hai câu liền nhau thì chia đôi khoảng hở (khung nối liền, chữ không chồng nhau). Chữ phụ đề Việt dùng chính mốc đã kéo dài này nên khung che và chữ xuất hiện, biến mất cùng một lúc.
+- **[Máy tính]** Tab 2: ô "Che sớm/trễ thêm (giây)" cạnh ô tích khung che bám câu.
+
+## [2.12.0] – 25/11/2026
+
+### Thêm
+- **[Lõi]** Khung che chữ Trung bám theo từng câu phụ đề Việt (`cover["fit"]`): mỗi câu có khung rộng/cao vừa chữ của câu đó, chỉ hiện đúng lúc câu hiện, thay cho một khung cố định theo câu dài nhất. Hộp đen vẽ trong file ASS; làm mờ dùng mặt nạ ASS + `maskedmerge` (chỉ làm mờ một lần cho cả vùng, không tăng tải theo số câu). Chiều cao tối thiểu = chiều cao dòng chữ Trung; có thể đặt `cover["min_width"]` (%) làm chiều rộng tối thiểu.
+- **[Máy tính]** Tab 2: ô tích "Khung che bám theo chữ phụ đề Việt" (mặc định bật).
+
+## [2.11.0] – 25/11/2026
+
+### Thêm
+- **[Lõi]** `douyin.open_for_login`: mở Chrome (cùng profile) tới douyin.com để người dùng tự đăng nhập một lần, đăng nhập được lưu cho các lần sau.
+- **[Web]** Nút "Đăng nhập Douyin (1 lần)": mở Chrome trên màn ảo, xem và quét mã QR qua noVNC rồi bấm Tiếp tục. Cần thiết vì khi Douyin trả danh sách rỗng cho trình duyệt tự động, tool chỉ đọc được vài video đầu từ trang và không còn tự dừng chờ đăng nhập.
+
+### Thay đổi
+- **[Web]** Giao diện vừa khít khung hình, không cuộn cả trang; danh sách video dài thì cuộn bên trong khung danh sách.
+
 ## [2.10.1] – 25/11/2026
 
 ### Sửa lỗi

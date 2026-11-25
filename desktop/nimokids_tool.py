@@ -503,6 +503,8 @@ def run_gui():
     v_cover_top = tk.DoubleVar(value=88.0)
     v_cover_h = tk.DoubleVar(value=9.0)
     v_cover_w = tk.DoubleVar(value=100.0)
+    v_cover_fit = tk.BooleanVar(value=True)
+    v_cover_pad = tk.DoubleVar(value=0.5)
     v_vsub = tk.BooleanVar(value=False)
     v_vsub_dir = tk.StringVar(value=settings.get("cmp_vsub", str(Path(DEFAULT_OUT) / "subtitles")))
     v_vsub_size = tk.DoubleVar(value=5.0)
@@ -594,6 +596,10 @@ def run_gui():
     ttk.Spinbox(c1, from_=10, to=100, increment=1, width=5, textvariable=v_cover_w).pack(side="left", padx=6)
     c1.grid(row=0, column=0, columnspan=3, sticky="w")
     c1b = ttk.Frame(cf2)
+    ttk.Checkbutton(c1b, text="Khung che bám theo chữ phụ đề Việt (đổi theo từng câu)",
+                    variable=v_cover_fit).pack(side="left", padx=(0, 6))
+    ttk.Label(c1b, text="Che sớm/trễ thêm (giây):").pack(side="left")
+    ttk.Spinbox(c1b, from_=0, to=3, increment=0.1, width=5, textvariable=v_cover_pad).pack(side="left", padx=(6, 12))
     b_det = ttk.Button(c1b, text="Tự dò vị trí chữ Trung", command=lambda: do_detect())
     b_det.pack(side="left")
     b_pv = ttk.Button(c1b, text="Xem thử 1 khung hình", command=lambda: do_preview())
@@ -656,7 +662,8 @@ def run_gui():
                     logo=v_logo.get().strip(), logo_h=int(v_logoh.get()),
                     opacity=round(float(v_op.get()), 2), speed=float(v_speed.get()), margin=30),
             cover=dict(top=float(v_cover_top.get()), height=float(v_cover_h.get()), width=float(v_cover_w.get()),
-                       style="box" if v_cover_style.get() == "Hộp đen" else "blur") if v_cover.get() else None,
+                       style="box" if v_cover_style.get() == "Hộp đen" else "blur",
+                       fit=bool(v_cover_fit.get()), pad=float(v_cover_pad.get())) if v_cover.get() else None,
             vsub=dict(folder=v_vsub_dir.get().strip(), size=float(v_vsub_size.get())) if v_vsub.get() else None,
             titles=dict(folder=v_title_dir.get().strip(), lang=(v_title_lang.get().strip() or "vi")) if v_title.get() else None)
 

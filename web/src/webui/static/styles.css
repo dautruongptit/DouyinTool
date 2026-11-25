@@ -46,6 +46,18 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .hidden{display:none!important}
 
 .tbl-wrap{margin-top:12px;max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+
+/* Trang vừa khít khung hình (không cuộn cả trang); danh sách video dài thì tự cuộn bên trong */
+html,body{height:100%}
+body{display:flex;flex-direction:column;height:100vh;height:100dvh;overflow:hidden}
+header,.tabs,footer{flex:none}
+footer{position:static}
+main{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.panel.active{flex:1;min-height:0;overflow:auto}
+#t1.panel.active{display:flex;flex-direction:column;overflow:hidden}
+#t1 > *{flex:none}
+#t1 .tbl-wrap{flex:1 1 auto;min-height:140px;max-height:none}
+#log{max-height:150px}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{padding:7px 9px;border-bottom:1px solid var(--line);text-align:left}
 th{position:sticky;top:0;background:#101a2b;z-index:1}
