@@ -6,7 +6,8 @@
 # đủ thư viện hệ thống của Chromium + ffmpeg + Xvfb; tách stage không giảm được image.
 # Vẫn giữ nguyên tắc quan trọng nhất của quy chuẩn: chạy bằng user không phải root.
 
-FROM python:3.12-slim   # 3.12: rapidocr-onnxruntime chưa hỗ trợ 3.13
+# Python 3.12: rapidocr-onnxruntime chưa có bản cho 3.13
+FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
