@@ -8,6 +8,9 @@ export DISPLAY="${DISPLAY:-:99}"
 
 # Container restart giữ lại file khóa cũ của Xvfb -> xóa để khỏi lỗi "Server is already active"
 rm -f "/tmp/.X${DISPLAY#:}-lock"
+# Chromium ghi khóa profile kèm tên máy (hostname). Container mới có hostname khác nên Chromium tưởng profile
+# đang bị máy khác dùng và treo lúc mở. Lúc này chưa có Chromium nào chạy -> xóa khóa cũ là an toàn.
+rm -f "${NIMOKIDS_DATA_DIR:-/data}"/browser_profile/Singleton{Lock,Cookie,Socket}
 echo "[entrypoint] Khởi động Xvfb trên $DISPLAY ..."
 Xvfb "$DISPLAY" -screen 0 1280x900x24 -nolisten tcp &
 # Chờ Xvfb sẵn sàng (tối đa ~9 giây)

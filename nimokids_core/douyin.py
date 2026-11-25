@@ -126,30 +126,172 @@ CLOSE_LOGIN_JS = """() => {
   const vis = el => { if (!el) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
   const sels = ['.dy-account-close', '[class*="dy-account-close"]', '[data-e2e="login-close"]',
                 '#login-panel-new [class*="close"]', '[id^="login-pa"] [class*="close"]',
-                '[class*="login-panel"] [class*="close"]'];
+                '[class*="login-panel"] [class*="close"]', '[class*="login"] [class*="close"]'];
   for (const s of sels) {
     const el = document.querySelector(s);
-    if (vis(el)) { el.click(); return s; }
+    if (vis(el)) { el.click(); return 'sel|' + s; }
   }
-  return vis(document.querySelector('#login-panel-new, [id^="login-pa"]')) ? 'esc' : '';
+  const panel = document.querySelector('#login-panel-new, [id^="login-pa"], [class*="login-panel"]');
+  if (!vis(panel)) return '';
+  // Không có mã nhận diện nút X: tìm "thẻ" đăng nhập (khối lớn nhất) rồi bấm phần tử nhỏ ở góc phải-trên của nó
+  let card = null, best = 0;
+  for (const el of panel.querySelectorAll('*')) {
+    const r = el.getBoundingClientRect();
+    if (r.width >= 400 && r.width <= 1100 && r.height >= 300 && r.height <= 800 && r.width * r.height > best) { card = el; best = r.width * r.height; }
+  }
+  if (card) {
+    const c = card.getBoundingClientRect();
+    const cands = [];
+    for (const el of card.querySelectorAll('*')) {
+      const r = el.getBoundingClientRect();
+      if (r.width >= 10 && r.width <= 70 && r.height >= 10 && r.height <= 70 && r.right > c.right - 90 && r.top < c.top + 90) cands.push(el);
+    }
+    const nm = e => e.tagName + '.' + String(e.className && e.className.baseVal !== undefined ? e.className.baseVal : e.className).slice(0, 40);
+    const d = 'card ' + Math.round(c.width) + 'x' + Math.round(c.height) + ' ứng viên: ' + cands.slice(0, 5).map(nm).join(' , ');
+    if (cands.length) { cands[0].click(); return 'geo|' + d; }
+    return 'esc|' + d + ' | HTML: ' + card.outerHTML.slice(0, 300).replace(/\\s+/g, ' ');
+  }
+  return 'esc|không thấy thẻ; HTML: ' + panel.outerHTML.slice(0, 300).replace(/\\s+/g, ' ');
 }"""
 
 def close_login_popup(page, log=None, state=None):
     """Nếu đang có khung đăng nhập Douyin (đang hiện) thì đóng (bấm X). Trả về True nếu thấy khung."""
     try:
-        r = page.evaluate(CLOSE_LOGIN_JS)
-        if r == "esc":
+        raw = page.evaluate(CLOSE_LOGIN_JS)
+        kind, _, dbg = (raw or "").partition("|")
+        if kind == "esc":
             page.keyboard.press("Escape")
-        if r:
+        if kind:
             if state is None:
                 state = {}
             n = state["n"] = state.get("n", 0) + 1
             if log and (n == 1 or n % 20 == 0):
-                log(f"Thấy khung đăng nhập Douyin, đã bấm X để đóng (lần {n}, cách đóng: {r}).")
+                log(f"Thấy khung đăng nhập Douyin (lần {n}), cách đóng: {kind}. {dbg[:420]}")
             return True
     except Exception:
         pass
     return False
+
+# ---- Lấy danh sách trực tiếp từ trang kênh (khi Douyin không trả dữ liệu API cho Chromium tự động) ----
+# Trang kênh vẫn hiện lưới video dù chưa đăng nhập. Đọc link /video/<id>, tiêu đề và ảnh bìa từ lưới đó.
+GRID_JS = r"""() => {
+  const rows = [];
+  for (const a of document.querySelectorAll('a[href*="/video/"]')) {
+    const href = a.getAttribute('href') || '';
+    const id = (href.split('/video/')[1] || '').split(/[^0-9]/)[0];
+    if (!id) continue;
+    const img = a.querySelector('img');
+    let cover = img ? (img.currentSrc || img.src || '') : '';
+    if (cover.startsWith('data:')) cover = '';
+    const box = a.closest('li') || a;
+    const lines = (box.innerText || '').split('\n').map(s => s.trim()).filter(s => s && !/^[0-9.,]+[KkWw万]?$/.test(s));
+    lines.sort((x, y) => y.length - x.length);
+    rows.push({id: id, cover: cover, title: lines[0] || ''});
+  }
+  return rows;
+}"""
+
+# Trên trang một video: lấy link file mp4 từ thẻ <video>.
+VIDEO_SRC_JS = r"""() => {
+  const urls = [];
+  for (const v of document.querySelectorAll('video')) {
+    if (v.currentSrc) urls.push(v.currentSrc);
+    if (v.src) urls.push(v.src);
+    for (const s of v.querySelectorAll('source')) if (s.src) urls.push(s.src);
+  }
+  return urls.filter(u => u.startsWith('http'));
+}"""
+
+
+def dom_to_aweme(row):
+    """Chuyển 1 ô trên lưới thành dict giống aweme của API. ID video của Douyin có 32 bit cao là mốc thời gian (giây)."""
+    vid = row["id"]
+    ts = int(vid) >> 32
+    return {"aweme_id": vid, "desc": row.get("title", ""), "create_time": ts if 1_400_000_000 < ts < 4_000_000_000 else 0,
+            "video": {"cover": {"url_list": [row["cover"]] if row.get("cover") else []}}, "_dom": True}
+
+
+def scrape_grid(page, log, stop, limit, total, prog, popup):
+    """Cuộn trang kênh và đọc lưới video. Trả về list dict {id, cover, title}."""
+    found = {}
+    idle = 0
+    page.mouse.move(640, 500)
+    for _ in range(120):
+        if stop.is_set():
+            raise Stopped()
+        close_login_popup(page, log, popup)
+        try:
+            rows = page.evaluate(GRID_JS)
+        except Exception:
+            rows = []
+        before = len(found)
+        for r in rows:
+            found.setdefault(r["id"], r)
+        n = len(found)
+        if n != before:
+            log(f"Đã đọc {n}{('/' + str(total)) if total else ''} video từ trang kênh...")
+            if total:
+                prog(n, total)
+            idle = 0
+        else:
+            idle += 1
+        if (limit and n >= limit) or (total and n >= total) or idle >= 6:
+            break
+        try:
+            page.evaluate(SCROLL_JS)
+        except Exception:
+            pass
+        page.mouse.wheel(0, 3000)
+        page.keyboard.press("End")
+        page.wait_for_timeout(1500)
+    return list(found.values())
+
+
+def resolve_dom_videos(need, browser, log, prog, stop):
+    """Mở từng trang video bằng trình duyệt để lấy link mp4, gắn vào item (item['video']['play_addr'])."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        raise RuntimeError("Thiếu thư viện. Chạy: python -m pip install playwright requests")
+    log(f"Lấy link tải của {len(need)} video bằng trình duyệt (danh sách đọc từ trang nên chưa có link)...")
+    hidden = browser.get("hidden", True)
+    args = ["--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding",
+            "--disable-background-timer-throttling"]
+    if hidden:
+        args.append("--window-position=-32000,-32000")
+    popup = {"n": 0}
+    with sync_playwright() as p:
+        ctx = p.chromium.launch_persistent_context(
+            browser["profile"], channel=browser.get("channel"), headless=False,
+            viewport={"width": 1280, "height": 900}, args=args)
+        page = ctx.pages[0] if ctx.pages else ctx.new_page()
+        ok = 0
+        for i, a in enumerate(need, 1):
+            if stop.is_set():
+                ctx.close()
+                raise Stopped()
+            vid = a["aweme_id"]
+            url = None
+            try:
+                page.goto(f"https://www.douyin.com/video/{vid}", wait_until="domcontentloaded")
+                t0 = time.time()
+                while not url and time.time() - t0 < 20:
+                    page.wait_for_timeout(700)
+                    close_login_popup(page, None, popup)
+                    srcs = page.evaluate(VIDEO_SRC_JS)
+                    mp4 = [u for u in srcs if "video_mp4" in u or ".mp4" in u]
+                    url = (mp4 or srcs or [None])[0]
+            except Exception as e:
+                log(f"   [{i}/{len(need)}] lỗi mở trang {vid}: {e}")
+            if url:
+                a["video"]["play_addr"] = {"url_list": [url]}
+                ok += 1
+            else:
+                log(f"   [{i}/{len(need)}] không thấy link video trên trang {vid}")
+            prog(i, len(need))
+        ctx.close()
+    log(f"Đã lấy được link của {ok}/{len(need)} video.")
+
 
 def collect_list(cfg, log, prog, wait_user, stop):
     """Bước 1: dùng Chrome lấy danh sách video + cookie. Trả về dict(items, cookies, ua, total)."""
@@ -199,7 +341,12 @@ def collect_list(cfg, log, prog, wait_user, stop):
                 try:
                     data = resp.json()
                 except Exception:
-                    info["posts"].append(f"HTTP {resp.status}, không đọc được JSON (có thể bị chặn/captcha)")
+                    try:
+                        body = resp.body()
+                        snip = body[:80].decode("utf-8", "replace").replace("\n", " ")
+                        info["posts"].append(f"HTTP {resp.status}, thân {len(body)} byte, không phải JSON: '{snip}'")
+                    except Exception:
+                        info["posts"].append(f"HTTP {resp.status}, không đọc được thân phản hồi")
                     return
                 lst = data.get("aweme_list") or []
                 info["posts"].append(f"HTTP {resp.status}, {len(lst)} video, status_code={data.get('status_code')}, "
@@ -242,17 +389,36 @@ def collect_list(cfg, log, prog, wait_user, stop):
                 has_cap = page.evaluate("!!document.querySelector('#captcha_container, .captcha_verify_container, [class*=captcha]')")
                 log(f"[Chẩn đoán] Trang: {page.url[:90]} | Tiêu đề: {page.title()[:50]} | "
                     f"Khung đăng nhập thấy {popup['n']} lần | Captcha: {'có' if has_cap else 'không'}")
+                dom = page.evaluate("""() => ({
+                    videos: document.querySelectorAll('a[href*="/video/"]').length,
+                    renderData: !!document.querySelector('#RENDER_DATA'),
+                    webdriver: navigator.webdriver, lang: navigator.language, ua: navigator.userAgent.slice(0, 90)})""")
+                log(f"[Chẩn đoán] Trong trang: {dom}")
                 log("[Chẩn đoán] Phản hồi aweme/post: " + (" ; ".join(info["posts"][:5]) or "KHÔNG có phản hồi nào"))
             except Exception as e:
                 log(f"[Chẩn đoán] lỗi: {e}")
-            if hidden:
-                show_window()
-            log("Douyin cần đăng nhập hoặc xác minh captcha. Cửa sổ Chrome đã hiện ra: xử lý xong, "
-                "tool sẽ TỰ chạy tiếp khi thấy danh sách video (hoặc bấm nút 'Đã thấy danh sách...').")
-            def ready():
-                page.wait_for_timeout(200)  # cho Playwright nhận phản hồi mạng
-                return bool(collected)
-            wait_user(ready)
+            # Không cần đăng nhập: trang kênh vẫn hiện lưới video -> đọc danh sách thẳng từ trang
+            log("Douyin không trả danh sách qua API, thử đọc danh sách trực tiếp từ trang kênh (không cần đăng nhập)...")
+            try:
+                rows = scrape_grid(page, log, stop, limit, info["total"], prog, popup)
+            except Stopped:
+                ctx.close()
+                raise
+            if rows:
+                for r in rows:
+                    collected[r["id"]] = dom_to_aweme(r)
+                info["has_more"] = False   # đã cuộn hết lưới, bỏ qua vòng cuộn theo API bên dưới
+                log(f"Đã đọc {len(rows)} video từ trang kênh. (Link tải sẽ lấy lúc bấm tải video.)")
+            else:
+                if hidden:
+                    show_window()
+                log("Không đọc được video nào từ trang. Cửa sổ Chrome đã hiện ra: xử lý đăng nhập/captcha xong, "
+                    "tool sẽ TỰ chạy tiếp khi thấy danh sách video (hoặc bấm nút 'Đã thấy danh sách...').")
+
+                def ready():
+                    page.wait_for_timeout(200)  # cho Playwright nhận phản hồi mạng
+                    return bool(collected)
+                wait_user(ready)
         if stop.is_set():
             ctx.close()
             raise Stopped()
@@ -309,7 +475,8 @@ def collect_list(cfg, log, prog, wait_user, stop):
         msg += (f" (Kênh báo {info['total']}, chênh {info['total'] - len(items)} video: có thể là video ẩn/riêng tư/đã gỡ, "
                 "hoặc đã tải về từ trước. Bấm 'Lấy danh sách' lại nếu muốn thử tiếp.)")
     log(msg)
-    return dict(items=items, cookies=cookies, ua=ua, total=info["total"])
+    return dict(items=items, cookies=cookies, ua=ua, total=info["total"],
+                browser=dict(profile=cfg["profile"], channel=cfg["channel"], hidden=hidden))
 
 def download_items(cfg, res, log, prog, stop):
     """Bước 2: tải video + thumbnail từ danh sách đã lấy."""
@@ -321,6 +488,13 @@ def download_items(cfg, res, log, prog, stop):
     out.mkdir(parents=True, exist_ok=True)
     items, cookies, ua = res["items"], res["cookies"], res["ua"]
     log(f"Bắt đầu tải {len(items)} video vào {out}")
+
+    need = [a for a in items if a.get("_dom") and not pick_video_url(a) and not is_downloaded(out, a)]
+    if need:
+        if res.get("browser"):
+            resolve_dom_videos(need, res["browser"], log, prog, stop)
+        else:
+            log("Thiếu thông tin trình duyệt để lấy link tải. Hãy bấm 'Lấy danh sách' lại.")
 
     s = requests.Session()
     s.headers.update({"User-Agent": ua, "Referer": REFERER})

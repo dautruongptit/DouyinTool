@@ -19,6 +19,29 @@ Phiên bản hiện tại nằm ở `nimokids_core/__init__.py` (`__version__`),
 
 ---
 
+## [2.10.0] – 25/11/2026
+
+### Thêm
+- **[Lõi]** Lấy danh sách video KHÔNG cần đăng nhập: khi Douyin không trả danh sách qua API (hay gặp với Chromium trên server), tool đọc thẳng lưới video trên trang kênh (link /video/<id>, tiêu đề, ảnh bìa), tự cuộn đến hết và luôn chạy khi có link kênh. Ngày đăng lấy từ ID video nên tên file giữ nguyên dạng ngày_ID_tiêu đề.
+- **[Lõi]** Khi tải, video đọc từ trang chưa có link tải nên tool mở từng trang video bằng trình duyệt để lấy link mp4 rồi tải. Chỉ khi không đọc được gì từ trang mới quay lại cách cũ (chờ đăng nhập/captcha).
+- **[Web]** `entrypoint.sh` xóa file khóa profile Chromium (Singleton*) còn sót từ container cũ, tránh treo ở bước "Đang mở Chrome".
+
+### Sửa lỗi
+- **[Lõi]** Khung đăng nhập Douyin: chỉ tính khi đang hiện, tự bấm nút X (kể cả khi không có mã nhận diện quen thuộc, tìm theo góc phải-trên của khung), nhật ký không lặp từng 0,5 giây; thêm dòng [Chẩn đoán] khi không lấy được danh sách.
+
+## [2.9.4] – 25/11/2026
+
+### Sửa lỗi
+- **[Lõi]** Khung đăng nhập Douyin không có mã nhận diện nút X quen thuộc: tool tìm thẻ đăng nhập rồi bấm phần tử nhỏ ở góc phải-trên; nếu vẫn không đóng được thì ghi cấu trúc HTML vào nhật ký để chỉnh tiếp.
+
+### Thêm
+- **[Lõi]** [Chẩn đoán] ghi thêm nội dung phản hồi aweme/post khi không phải JSON, số video thấy trong trang, có RENDER_DATA không, navigator.webdriver, ngôn ngữ và user-agent.
+
+## [2.9.3] – 25/11/2026
+
+### Sửa lỗi
+- **[Web]** Bấm "Lấy danh sách" chỉ hiện "Đang mở Chrome..." rồi đứng mãi: Chromium treo vì file khóa profile cũ (Singleton*) còn sót từ container trước. `entrypoint.sh` giờ xóa file khóa này mỗi lần container khởi động.
+
 ## [2.9.2] – 25/11/2026
 
 ### Sửa lỗi
