@@ -121,6 +121,32 @@ SCROLL_JS = """() => {
   return n;
 }"""
 
+# Khung "Log in to Douyin" (đăng nhập bằng QR/SĐT) hay bật lên che trang. Tìm nút X và bấm.
+CLOSE_LOGIN_JS = """() => {
+  const sels = ['.dy-account-close', '[class*="dy-account-close"]', '[data-e2e="login-close"]',
+                '#login-panel-new [class*="close"]', '[id^="login-pa"] [class*="close"]',
+                '[class*="login-panel"] [class*="close"]'];
+  for (const s of sels) {
+    const el = document.querySelector(s);
+    if (el && (el.offsetParent !== null || el.getClientRects().length)) { el.click(); return s; }
+  }
+  return document.querySelector('#login-panel-new, [id^="login-pa"]') ? 'esc' : '';
+}"""
+
+def close_login_popup(page, log=None):
+    """Nếu đang có khung đăng nhập Douyin thì đóng (bấm X). Trả về True nếu đã đóng."""
+    try:
+        r = page.evaluate(CLOSE_LOGIN_JS)
+        if r == "esc":
+            page.keyboard.press("Escape")
+        if r:
+            if log:
+                log("Thấy khung đăng nhập Douyin, đã bấm X để đóng.")
+            return True
+    except Exception:
+        pass
+    return False
+
 def collect_list(cfg, log, prog, wait_user, stop):
     """Bước 1: dùng Chrome lấy danh sách video + cookie. Trả về dict(items, cookies, ua, total)."""
     try:
@@ -185,11 +211,19 @@ def collect_list(cfg, log, prog, wait_user, stop):
         page.goto(cfg["url"], wait_until="domcontentloaded")
         # Tự chờ danh sách video xuất hiện (tối đa 25 giây)
         t0 = time.time()
+        closed_at, reloads = None, 0
         while not collected and time.time() - t0 < 25:
             if stop.is_set():
                 ctx.close()
                 raise Stopped()
             page.wait_for_timeout(500)
+            if close_login_popup(page, log):
+                closed_at = time.time()
+            elif closed_at and not collected and time.time() - closed_at > 3 and reloads < 2:
+                # đã đóng khung đăng nhập mà vẫn chưa có danh sách -> tải lại trang để lấy lại
+                log("Đã đóng khung đăng nhập nhưng chưa có danh sách, tải lại trang để lấy lại...")
+                page.reload(wait_until="domcontentloaded")
+                reloads, closed_at, t0 = reloads + 1, None, time.time()
             if time.time() - t0 > 8 and not collected:
                 page.mouse.wheel(0, 1500)  # đôi khi phải cuộn nhẹ Douyin mới gọi danh sách
         if collected:
@@ -221,6 +255,7 @@ def collect_list(cfg, log, prog, wait_user, stop):
                 break
             if not info["has_more"] or (info["total"] and n >= info["total"]):
                 break  # Douyin báo đã hết video
+            close_login_popup(page, log)  # khung đăng nhập có thể bật lại giữa chừng và chặn cuộn
             try:
                 page.evaluate(SCROLL_JS)
             except Exception:

@@ -9,6 +9,6 @@ QUY TẮC: mọi thay đổi nghiệp vụ chỉ sửa ở đây, cả hai bản
 __version__ là số phiên bản DUY NHẤT của cả hai bản (Semantic Versioning, xem docs/CHANGELOG.md).
 Các hàm nhận callback log(msg), prog(value, max) và stop (threading.Event) nên không phụ thuộc giao diện.
 """
-__version__ = "2.9.0"
+__version__ = "2.9.1"
 
 from .common import Stopped  # noqa: F401

@@ -19,6 +19,11 @@ Phiên bản hiện tại nằm ở `nimokids_core/__init__.py` (`__version__`),
 
 ---
 
+## [2.9.1] – 25/11/2026
+
+### Sửa lỗi
+- **[Lõi]** Lấy danh sách video: khi Douyin bật khung "Log in to Douyin" che trang, tool tự bấm X để đóng (kiểm tra liên tục, cả lúc đang cuộn). Nếu đóng xong mà chưa có danh sách thì tự tải lại trang để lấy lại (tối đa 2 lần), không còn dừng chờ người dùng.
+
 ## [2.9.0] – 25/11/2026
 
 ### Thêm
