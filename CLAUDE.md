@@ -51,7 +51,7 @@ nimokids_core/          # LÕI DÙNG CHUNG — nghiệp vụ Douyin/ghép/phụ 
 desktop/                # BẢN MÁY TÍNH: nimokids_tool.py (Tkinter), Mo Nimo Kids Tool.bat, ico/logo, DOC_TRUOC.txt
 docs/                   # ARCHITECTURE.md + CHANGELOG.md (mục [Lõi]/[Máy tính]/[Web])
 web/                    # BẢN WEB
-  Dockerfile            # python:3.13-slim + ffmpeg + Chromium + Xvfb/x11vnc + noVNC, chạy non-root
+  Dockerfile            # python:3.12-slim + ffmpeg + Chromium + Xvfb/x11vnc + noVNC, chạy non-root
   entrypoint.sh         # bật Xvfb + x11vnc rồi chạy uvicorn (GIỮ xuống dòng LF)
   requirements.txt
   src/
