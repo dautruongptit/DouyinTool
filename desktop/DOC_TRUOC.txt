@@ -1,0 +1,14 @@
+NIMO KIDS TOOL - CACH MO BANG 1 CLICK
+
+1. Giai nen ca thu muc NimoKidsTool ra mot cho co dinh (vi du D:\NimoKidsTool).
+   Dung chay khi con o trong file zip.
+2. Bam dup "Mo Nimo Kids Tool.bat" (chi LAN DAU):
+   - tu cai thu vien can thiet (1-2 phut)
+   - tu tao icon "Nimo Kids Tool" ngoai Desktop
+   - mo tool
+3. Tu lan sau: bam dup icon "Nimo Kids Tool" ngoai Desktop la xong.
+
+Neu Windows hien "Windows protected your PC": bam "More info" -> "Run anyway".
+Neu tool bao loi khi mo: xem file nimokids_error.log trong thu muc nay va gui lai.
+Can them ffmpeg cho tab Ghep video / Anh bia: winget install Gyan.FFmpeg
+Neu di chuyen thu muc: bam lai file .bat de tao lai icon.

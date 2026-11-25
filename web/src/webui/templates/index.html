@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Douyin Tool v{{ version }}</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<header>
+  <h1>Nimo Kids — Douyin Tool <span class="ver">bản web v{{ version }}</span></h1>
+</header>
+
+<nav class="tabs">
+  <button class="tab active" data-tab="t1">1. Tải kênh Douyin</button>
+  <button class="tab" data-tab="t2">2. Ghép video + watermark</button>
+  <button class="tab" data-tab="t3">3. Phụ đề SRT</button>
+</nav>
+
+<main>
+  <!-- ================= TAB 1 ================= -->
+  <section id="t1" class="panel active">
+    <label>Link kênh Douyin
+      <input id="d_url" type="text" value="{{ settings.get('last_url','') }}"
+             placeholder="https://www.douyin.com/user/MS4wLjAB... hoặc v.douyin.com/...">
+    </label>
+    <div class="row">
+      <label>Tên thư mục (trong /data/media)
+        <input id="d_folder" type="text" value="{{ settings.get('last_folder','') }}"
+               placeholder="để trống = tự đặt theo mã kênh">
+      </label>
+      <label class="narrow">Số video tối đa (0 = tất cả)
+        <input id="d_limit" type="number" value="0" min="0">
+      </label>
+      <label class="chk"><input id="d_thumbs" type="checkbox" checked> Tải kèm thumbnail PNG</label>
+    </div>
+    <div class="btns">
+      <button id="b_list" class="primary">1. Lấy danh sách video</button>
+      <button id="b_download" class="primary" disabled>2. Tải video đã chọn</button>
+    </div>
+
+    <div id="login_banner" class="banner hidden">
+      Douyin cần đăng nhập / giải captcha.
+      <button id="b_novnc">Mở màn hình Chrome</button>
+      <button id="b_continue" class="primary">Tôi đã đăng nhập xong — Tiếp tục</button>
+    </div>
+
+    <div id="d_status" class="muted">Chưa có danh sách. Dán link kênh rồi bấm “Lấy danh sách video”.</div>
+
+    <div class="tbl-wrap">
+      <table id="d_table">
+        <thead>
+          <tr><th class="w-chk"><input id="d_all" type="checkbox"></th><th class="w-n">#</th>
+              <th class="w-date">Ngày đăng</th><th class="w-state">Trạng thái</th><th>Tiêu đề</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="btns small">
+      <button id="d_check_all">Chọn tất cả</button>
+      <button id="d_uncheck_all">Bỏ chọn tất cả</button>
+      <button id="d_check_new">Chỉ chọn video chưa tải</button>
+    </div>
+  </section>
+
+  <!-- ================= TAB 2 ================= -->
+  <section id="t2" class="panel">
+    <div class="row">
+      <label>Thư mục video nguồn
+        <select id="c_folder"></select>
+      </label>
+      <button id="c_reload" class="small">↻ Nạp lại danh sách thư mục</button>
+    </div>
+    <label>Tên file xuất ra (trong thư mục nguồn)
+      <input id="c_out" type="text" value="tong_10p.mp4">
+    </label>
+    <div class="row">
+      <label class="narrow">Thời lượng (phút)<input id="c_target" type="number" value="10" min="1"></label>
+      <label class="narrow">Thứ tự
+        <select id="c_order"><option value="oldest">Cũ → mới</option>
+          <option value="newest">Mới → cũ</option><option value="random">Ngẫu nhiên</option></select>
+      </label>
+      <label class="narrow">Khung hình
+        <select id="c_size"><option>1920x1080</option><option>1280x720</option><option>1080x1920</option></select>
+      </label>
+      <label class="narrow">FPS<input id="c_fps" type="number" value="30" min="15" max="60"></label>
+      <label class="narrow">CRF<input id="c_crf" type="number" value="21" min="16" max="30"></label>
+    </div>
+    <label class="chk"><input id="c_exact" type="checkbox"> Cắt đúng bằng thời lượng (có thể cắt ngang video cuối)</label>
+
+    <fieldset>
+      <legend>Watermark di chuyển</legend>
+      <div class="row">
+        <label class="chk"><input type="radio" name="wm" value="text" checked> Chữ</label>
+        <input id="w_text" type="text" value="nimokids" class="narrow">
+        <label class="narrow">Cỡ chữ<input id="w_fontsize" type="number" value="44"></label>
+      </div>
+      <div class="row">
+        <label class="chk"><input type="radio" name="wm" value="logo"> Logo PNG</label>
+        <input id="w_logo" type="text" placeholder="tên file .png trong /data/media" class="grow">
+        <button id="w_genlogo" class="small">Tạo logo Nimo Kids</button>
+        <label class="narrow">Cao logo (px)<input id="w_logoh" type="number" value="110"></label>
+      </div>
+      <div class="row">
+        <label class="narrow">Độ đậm (0–1)<input id="w_op" type="number" value="0.35" step="0.05" min="0.1" max="1"></label>
+        <label class="narrow">Tốc độ (nhỏ=chậm)<input id="w_speed" type="number" value="0.15" step="0.01" min="0.03" max="1"></label>
+      </div>
+    </fieldset>
+
+    <div class="btns">
+      <button id="b_dry">Xem danh sách sẽ ghép</button>
+      <button id="b_render" class="primary">Render video tổng</button>
+    </div>
+    <div id="c_result" class="muted"></div>
+  </section>
+
+  <!-- ================= TAB 3 ================= -->
+  <section id="t3" class="panel">
+    <div class="row">
+      <label>Thư mục video
+        <select id="s_folder"></select>
+      </label>
+      <button id="s_reload" class="small">↻ Nạp lại</button>
+      <label class="grow">hoặc đường dẫn file/thư mục (trong /data/media)
+        <input id="s_src" type="text" placeholder="để trống = dùng thư mục chọn bên trái">
+      </label>
+    </div>
+    <div class="row">
+      <label class="narrow">Model
+        <select id="s_model">
+          {% for m in whisper_models %}<option value="{{ m }}" {% if m == default_model %}selected{% endif %}>{{ m }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="narrow">Lời nói trong video
+        <select id="s_lang">{% for l in spoken_langs %}<option>{{ l }}</option>{% endfor %}</select>
+      </label>
+      <label class="narrow">Phụ đề
+        <select id="s_task"><option>Giữ nguyên lời nói</option><option>Dịch sang tiếng Anh</option></select>
+      </label>
+    </div>
+    <label class="chk"><input id="s_skip" type="checkbox" checked> Bỏ qua video đã có phụ đề</label>
+    <label class="chk"><input id="s_txt" type="checkbox"> Xuất thêm file .txt (chỉ chữ)</label>
+    <div class="btns"><button id="b_sub" class="primary">Tạo phụ đề SRT</button></div>
+    <div class="muted">ZBook không có CUDA nên Whisper chạy CPU (chậm). Khuyên dùng model <b>medium</b> hoặc <b>small</b>.
+      File .srt lưu trong thư mục “subtitles” cạnh video. Lần đầu sẽ tự tải model (~1.5GB với medium).</div>
+  </section>
+</main>
+
+<!-- ================= Tiến độ + nhật ký ================= -->
+<footer>
+  <div class="progress-row">
+    <div class="bar"><div id="bar_fill"></div></div>
+    <span id="pct">0%</span>
+    <button id="b_stop" disabled>Dừng</button>
+  </div>
+  <pre id="log"></pre>
+</footer>
+
+<!-- ================= noVNC modal ================= -->
+<div id="vnc_modal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head">
+      <span>Màn hình Chrome (đăng nhập / giải captcha Douyin)</span>
+      <button id="vnc_close">Đóng</button>
+    </div>
+    <iframe id="vnc_frame" src="about:blank"></iframe>
+  </div>
+</div>
+
+<script>window.APP = { version: "{{ version }}" };</script>
+<script src="/static/app.js"></script>
+</body>
+</html>

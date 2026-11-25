@@ -1,0 +1,11 @@
+# Giảm context khi build
+.git
+.env
+*.pyc
+__pycache__/
+documentation/
+*.md
+desktop/
+docs/
+NimoKidsTool_*.zip
+DouyinTool_*.zip

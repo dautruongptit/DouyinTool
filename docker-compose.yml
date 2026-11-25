@@ -1,0 +1,37 @@
+services:
+  web:
+    container_name: douyin-tool-web
+    build:
+      context: .                      # repo root: để COPY được cả nimokids_core/ và web/
+      dockerfile: web/Dockerfile
+    image: douyin-tool-web:latest
+    ports:
+      - "127.0.0.1:${WEB_PORT}:${WEB_PORT}"   # chỉ nghe localhost; Cloudflare Tunnel trỏ vào đây
+    environment:
+      - APP_PORT=${WEB_PORT}
+      - NIMOKIDS_DATA_DIR=/data        # core (app_data_dir) đọc biến này
+      - WHISPER_MODEL=${WHISPER_MODEL}
+      - DISPLAY=:99                     # Chromium (Playwright) vẽ lên màn ảo Xvfb
+      - VNC_PORT=5900
+    volumes:
+      - ${DATA_PATH}:/data              # media, models, browser_profile, app — gói trong 1 volume
+    shm_size: "1gb"                     # Chromium cần /dev/shm lớn, nếu không hay crash
+    networks:
+      - internal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:${WEB_PORT}/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: "${CPU_LIMIT}"
+          memory: ${MEM_LIMIT}
+
+networks:
+  internal:
+    name: douyin-tool-net
+    driver: bridge
