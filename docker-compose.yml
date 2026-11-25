@@ -15,6 +15,7 @@ services:
       - VNC_PORT=5900
     volumes:
       - ${DATA_PATH}:/data              # media, models, browser_profile, app — gói trong 1 volume
+      - ${MEDIA_PATH}:/data/media       # video nằm ở ổ riêng (đè lên /data/media)
     shm_size: "1gb"                     # Chromium cần /dev/shm lớn, nếu không hay crash
     networks:
       - internal
