@@ -19,6 +19,14 @@ Phiên bản hiện tại nằm ở `nimokids_core/__init__.py` (`__version__`),
 
 ---
 
+## [2.9.2] – 25/11/2026
+
+### Sửa lỗi
+- **[Lõi]** Khung đăng nhập Douyin: chỉ tính khi khung đang hiện thật (trước đây vẫn báo "đã đóng" liên tục dù khung ẩn), nhật ký không còn lặp từng 0,5 giây, và việc tự tải lại trang để lấy danh sách giờ chạy đúng.
+
+### Thêm
+- **[Lõi]** Khi không lấy được danh sách, nhật ký in dòng [Chẩn đoán]: địa chỉ/tiêu đề trang, có captcha không, và mã phản hồi của aweme/post, để biết Douyin chặn kiểu gì.
+
 ## [2.9.1] – 25/11/2026
 
 ### Sửa lỗi

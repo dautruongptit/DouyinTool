@@ -123,25 +123,29 @@ SCROLL_JS = """() => {
 
 # Khung "Log in to Douyin" (đăng nhập bằng QR/SĐT) hay bật lên che trang. Tìm nút X và bấm.
 CLOSE_LOGIN_JS = """() => {
+  const vis = el => { if (!el) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
   const sels = ['.dy-account-close', '[class*="dy-account-close"]', '[data-e2e="login-close"]',
                 '#login-panel-new [class*="close"]', '[id^="login-pa"] [class*="close"]',
                 '[class*="login-panel"] [class*="close"]'];
   for (const s of sels) {
     const el = document.querySelector(s);
-    if (el && (el.offsetParent !== null || el.getClientRects().length)) { el.click(); return s; }
+    if (vis(el)) { el.click(); return s; }
   }
-  return document.querySelector('#login-panel-new, [id^="login-pa"]') ? 'esc' : '';
+  return vis(document.querySelector('#login-panel-new, [id^="login-pa"]')) ? 'esc' : '';
 }"""
 
-def close_login_popup(page, log=None):
-    """Nếu đang có khung đăng nhập Douyin thì đóng (bấm X). Trả về True nếu đã đóng."""
+def close_login_popup(page, log=None, state=None):
+    """Nếu đang có khung đăng nhập Douyin (đang hiện) thì đóng (bấm X). Trả về True nếu thấy khung."""
     try:
         r = page.evaluate(CLOSE_LOGIN_JS)
         if r == "esc":
             page.keyboard.press("Escape")
         if r:
-            if log:
-                log("Thấy khung đăng nhập Douyin, đã bấm X để đóng.")
+            if state is None:
+                state = {}
+            n = state["n"] = state.get("n", 0) + 1
+            if log and (n == 1 or n % 20 == 0):
+                log(f"Thấy khung đăng nhập Douyin, đã bấm X để đóng (lần {n}, cách đóng: {r}).")
             return True
     except Exception:
         pass
@@ -162,7 +166,8 @@ def collect_list(cfg, log, prog, wait_user, stop):
     out.mkdir(parents=True, exist_ok=True)
     limit = cfg["limit"]
     collected = {}
-    info = {"total": None, "has_more": True}
+    info = {"total": None, "has_more": True, "posts": []}
+    popup = {"n": 0}
 
     hidden = cfg.get("hidden", True)
     log("Đang mở Chrome ở chế độ ẩn..." if hidden else "Đang mở Chrome...")
@@ -194,8 +199,12 @@ def collect_list(cfg, log, prog, wait_user, stop):
                 try:
                     data = resp.json()
                 except Exception:
+                    info["posts"].append(f"HTTP {resp.status}, không đọc được JSON (có thể bị chặn/captcha)")
                     return
-                for a in data.get("aweme_list") or []:
+                lst = data.get("aweme_list") or []
+                info["posts"].append(f"HTTP {resp.status}, {len(lst)} video, status_code={data.get('status_code')}, "
+                                     f"msg={str(data.get('status_msg') or '')[:60]}")
+                for a in lst:
                     if a.get("aweme_id"):
                         collected[a["aweme_id"]] = a
                 info["has_more"] = bool(data.get("has_more", 1))
@@ -217,9 +226,9 @@ def collect_list(cfg, log, prog, wait_user, stop):
                 ctx.close()
                 raise Stopped()
             page.wait_for_timeout(500)
-            if close_login_popup(page, log):
-                closed_at = time.time()
-            elif closed_at and not collected and time.time() - closed_at > 3 and reloads < 2:
+            if close_login_popup(page, log, popup):
+                closed_at = closed_at or time.time()
+            if closed_at and not collected and time.time() - closed_at > 3 and reloads < 2:
                 # đã đóng khung đăng nhập mà vẫn chưa có danh sách -> tải lại trang để lấy lại
                 log("Đã đóng khung đăng nhập nhưng chưa có danh sách, tải lại trang để lấy lại...")
                 page.reload(wait_until="domcontentloaded")
@@ -229,6 +238,13 @@ def collect_list(cfg, log, prog, wait_user, stop):
         if collected:
             log(f"Đã tự nhận danh sách video ({len(collected)} video đầu tiên), bắt đầu cuộn...")
         else:
+            try:
+                has_cap = page.evaluate("!!document.querySelector('#captcha_container, .captcha_verify_container, [class*=captcha]')")
+                log(f"[Chẩn đoán] Trang: {page.url[:90]} | Tiêu đề: {page.title()[:50]} | "
+                    f"Khung đăng nhập thấy {popup['n']} lần | Captcha: {'có' if has_cap else 'không'}")
+                log("[Chẩn đoán] Phản hồi aweme/post: " + (" ; ".join(info["posts"][:5]) or "KHÔNG có phản hồi nào"))
+            except Exception as e:
+                log(f"[Chẩn đoán] lỗi: {e}")
             if hidden:
                 show_window()
             log("Douyin cần đăng nhập hoặc xác minh captcha. Cửa sổ Chrome đã hiện ra: xử lý xong, "
@@ -255,7 +271,7 @@ def collect_list(cfg, log, prog, wait_user, stop):
                 break
             if not info["has_more"] or (info["total"] and n >= info["total"]):
                 break  # Douyin báo đã hết video
-            close_login_popup(page, log)  # khung đăng nhập có thể bật lại giữa chừng và chặn cuộn
+            close_login_popup(page, log, popup)  # khung đăng nhập có thể bật lại giữa chừng và chặn cuộn
             try:
                 page.evaluate(SCROLL_JS)
             except Exception:
