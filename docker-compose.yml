@@ -11,6 +11,7 @@ services:
       - APP_PORT=${WEB_PORT}
       - NIMOKIDS_DATA_DIR=/data        # core (app_data_dir) đọc biến này
       - WHISPER_MODEL=${WHISPER_MODEL}
+      - BROWSER_CHANNEL=${BROWSER_CHANNEL:-chrome}   # chrome (khuyên dùng) hoặc chromium
       - DISPLAY=:99                     # Chromium (Playwright) vẽ lên màn ảo Xvfb
       - VNC_PORT=5900
     volumes:

@@ -31,8 +31,8 @@ WORKDIR /app
 COPY web/requirements.txt ./requirements.txt
 RUN pip install -r requirements.txt
 
-# Chromium cho Playwright + thư viện hệ thống đi kèm
-RUN playwright install --with-deps chromium
+# Google Chrome thật (giống bản máy tính; Chromium bundled bị Douyin trả danh sách rỗng) + Chromium dự phòng
+RUN playwright install --with-deps chrome chromium
 
 # noVNC (trang xem màn hình Chromium ngay trên web)
 RUN git clone --depth 1 https://github.com/novnc/noVNC /opt/novnc

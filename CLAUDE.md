@@ -21,7 +21,7 @@ Thư mục `NimoKidsTool` cũ (repo gốc) đã bỏ; **từ nay chỉ phát tri
   Hai giao diện (Tkinter và web) chỉ **import** và gọi, **KHÔNG chép / viết lại nghiệp vụ** trong `desktop/` hay `web/`.
 - `nimokids_core/` ở đây là **nguồn sự thật duy nhất** (không còn bản copy nào khác): sửa thẳng ở đây,
   cả bản máy tính lẫn bản web tự nhận theo. Dockerfile COPY thư mục này vào image.
-- **Một số phiên bản cho cả hai bản:** `nimokids_core/__init__.py` → `__version__` (hiện 2.10.0).
+- **Một số phiên bản cho cả hai bản:** `nimokids_core/__init__.py` → `__version__` (hiện 2.10.1).
   Bản web đọc version này động (hiện trên tiêu đề trang + API /health).
 - Hợp đồng gọi hàm (mọi tác vụ dài): `fn(cfg, log, prog, stop[, wait_user])`
   - `cfg`: dict cấu hình · `log(msg)`: ghi nhật ký · `prog(value, max)`: tiến độ · `stop`: threading.Event (bật → ném `Stopped`).
@@ -75,7 +75,7 @@ Cloudflare Tunnel: ingress → `http://douyin-tool-web:8600` (nếu cloudflared 
 
 ## Bài học kỹ thuật (đừng lặp lỗi cũ)
 - Lấy danh sách Douyin bằng cách **bắt phản hồi `aweme/post`** trong Chrome thật, không gọi API trực tiếp (Douyin đổi chữ ký liên tục).
-- Trên server: Playwright dùng **Chromium bundled** (`channel=None`), cửa sổ **hiện trên Xvfb** (`hidden=False`) để noVNC xem được. Chrome không được "ngủ" khi bị che.
+- Trên server: Playwright dùng **Google Chrome thật** (`channel="chrome"`, cài trong image; Chromium bundled bị Douyin trả danh sách rỗng, đã gặp), cửa sổ **hiện trên Xvfb** (`hidden=False`) để noVNC xem được. Chrome không được "ngủ" khi bị che.
 - Thumbnail lấy `cover_original_scale`/`cover`, **không** lấy `origin_cover` (khung hình cắt từ video).
 - Whisper: **tắt VAD**, đọc âm thanh bằng **ffmpeg** (không dùng `av`), không ép sai ngôn ngữ / không `initial_prompt`, lọc câu "bịa".
 - Font Windows có dấu `:` làm hỏng `drawtext` → chép font sang thư mục tạm tên đơn giản (đã xử lý trong core).

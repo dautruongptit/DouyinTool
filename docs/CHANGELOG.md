@@ -19,6 +19,11 @@ Phiên bản hiện tại nằm ở `nimokids_core/__init__.py` (`__version__`),
 
 ---
 
+## [2.10.1] – 25/11/2026
+
+### Sửa lỗi
+- **[Web]** Bản web dùng Google Chrome thật (như bản máy tính) thay cho Chromium bundled: Chromium bundled bị Douyin trả danh sách rỗng (HTTP 200, 0 byte) nên chỉ đọc được 8/21 video từ trang. Image cài thêm Chrome (`playwright install chrome`), đổi bằng biến `BROWSER_CHANNEL` (chrome | chromium).
+
 ## [2.10.0] – 25/11/2026
 
 ### Thêm

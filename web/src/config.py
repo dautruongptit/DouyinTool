@@ -32,5 +32,7 @@ DEFAULT_WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "medium")
 
 # Trên server luôn chạy Chromium bản Playwright (không có "chrome" kênh hệ thống),
 # cửa sổ hiện trên màn ảo Xvfb (không đặt ra ngoài màn hình) để noVNC xem được.
-BROWSER_CHANNEL = None   # None = dùng Chromium bundled của Playwright
+# Mặc định dùng Google Chrome thật (cài trong image) vì Chromium bundled bị Douyin trả danh sách rỗng.
+# Đặt BROWSER_CHANNEL=chromium để dùng Chromium bundled.
+BROWSER_CHANNEL = None if os.environ.get("BROWSER_CHANNEL", "chrome") == "chromium" else os.environ.get("BROWSER_CHANNEL", "chrome")
 BROWSER_HIDDEN = False   # False = cửa sổ nằm trên màn ảo, noVNC thấy được
