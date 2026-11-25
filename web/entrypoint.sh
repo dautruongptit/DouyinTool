@@ -6,6 +6,8 @@ set -e
 : "${VNC_PORT:=5900}"
 export DISPLAY="${DISPLAY:-:99}"
 
+# Container restart giữ lại file khóa cũ của Xvfb -> xóa để khỏi lỗi "Server is already active"
+rm -f "/tmp/.X${DISPLAY#:}-lock"
 echo "[entrypoint] Khởi động Xvfb trên $DISPLAY ..."
 Xvfb "$DISPLAY" -screen 0 1280x900x24 -nolisten tcp &
 # Chờ Xvfb sẵn sàng (tối đa ~9 giây)
