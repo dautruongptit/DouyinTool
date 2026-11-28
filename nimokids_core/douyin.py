@@ -295,6 +295,159 @@ def resolve_dom_videos(need, browser, log, prog, stop):
     log(f"Đã lấy được link của {ok}/{len(need)} video.")
 
 
+# ---- Tải video lẻ từ link (douyin.com/video/<id>, ...?modal_id=<id>, v.douyin.com/...) ----
+VIDEO_ID_PATTERNS = [r"[?&#](?:modal_id|vid|aweme_id|item_id)=(\d{15,21})", r"/(?:video|note|share/video)/(\d{15,21})"]
+
+
+def parse_video_links(text):
+    """Tách mọi video trong đoạn chữ dán vào (mỗi dòng một link, hoặc lẫn trong chữ chia sẻ).
+    Trả về (danh sách ID video theo thứ tự, danh sách link rút gọn v.douyin.com)."""
+    ids, shorts = [], []
+    for line in (text or "").replace("\r", "\n").split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        found = []
+        for pat in VIDEO_ID_PATTERNS:
+            found += re.findall(pat, line)
+        if not found and re.fullmatch(r"\d{15,21}", line):
+            found = [line]  # chỉ dán số ID
+        for i in found:
+            if i not in ids:
+                ids.append(i)
+        for s in re.findall(r"https?://v\.douyin\.com/[0-9A-Za-z_\-]+/?", line):
+            if not found and s not in shorts:
+                shorts.append(s)
+    return ids, shorts
+
+
+def fetch_videos(cfg, log, prog, wait_user, stop):
+    """Lấy thông tin các video lẻ bằng Chrome thật (cùng profile với tab tải kênh).
+    cfg: text (các link), profile, channel, hidden.
+    Mở trang từng video, bắt phản hồi aweme/detail (có link phát KHÔNG watermark: play_addr / bit_rate,
+    không dùng download_addr là bản có watermark); không có thì lấy link từ thẻ <video> của trình phát.
+    Trả về dict giống collect_list để dùng thẳng với download_items."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        raise RuntimeError("Thiếu thư viện. Chạy: python -m pip install playwright requests")
+    ids, shorts = parse_video_links(cfg["text"])
+    if not ids and not shorts:
+        raise RuntimeError("Không thấy link video nào. Dán link dạng douyin.com/video/..., link có modal_id=..., "
+                           "hoặc link chia sẻ v.douyin.com/...")
+    hidden = cfg.get("hidden", True)
+    args = ["--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding",
+            "--disable-background-timer-throttling"]
+    if hidden:
+        args.append("--window-position=-32000,-32000")
+    details = {}
+    popup = {"n": 0}
+    items, failed = [], []
+    log("Đang mở Chrome ở chế độ ẩn..." if hidden else "Đang mở Chrome...")
+    with sync_playwright() as p:
+        ctx = p.chromium.launch_persistent_context(
+            cfg["profile"], channel=cfg.get("channel"), headless=False,
+            viewport={"width": 1280, "height": 900}, args=args)
+        page = ctx.pages[0] if ctx.pages else ctx.new_page()
+
+        def on_response(resp):
+            if "aweme/detail" not in resp.url:
+                return
+            try:
+                a = (resp.json() or {}).get("aweme_detail") or {}
+            except Exception:
+                return
+            if a.get("aweme_id"):
+                details[a["aweme_id"]] = a
+
+        page.on("response", on_response)
+        try:
+            for s in shorts:  # link rút gọn: mở để lấy link thật rồi tách ID
+                if stop.is_set():
+                    raise Stopped()
+                try:
+                    page.goto(s, wait_until="domcontentloaded")
+                    page.wait_for_timeout(1500)
+                    got, _ = parse_video_links(page.url)
+                    if got:
+                        ids += [i for i in got if i not in ids]
+                    else:
+                        log(f"Link rút gọn không phải link video: {s}")
+                except Stopped:
+                    raise
+                except Exception as e:
+                    log(f"Không mở được link rút gọn {s}: {e}")
+            log(f"Có {len(ids)} video cần lấy thông tin.")
+            for n, vid in enumerate(ids, 1):
+                if stop.is_set():
+                    raise Stopped()
+                a, src = None, None
+                try:
+                    page.goto(f"https://www.douyin.com/video/{vid}", wait_until="domcontentloaded")
+                    t0 = time.time()
+                    while time.time() - t0 < 20:
+                        if stop.is_set():
+                            raise Stopped()
+                        page.wait_for_timeout(500)
+                        close_login_popup(page, log, popup)
+                        a = details.get(vid)
+                        if a and pick_video_url(a):
+                            break
+                        if time.time() - t0 > 6:  # chưa thấy dữ liệu: thử lấy link từ trình phát
+                            srcs = page.evaluate(VIDEO_SRC_JS)
+                            mp4 = [u for u in srcs if "video_mp4" in u or ".mp4" in u]
+                            src = (mp4 or srcs or [None])[0]
+                            if src:
+                                break
+                except Stopped:
+                    raise
+                except Exception as e:
+                    log(f"[{n}/{len(ids)}] lỗi mở trang video {vid}: {e}")
+                if a and pick_video_url(a):
+                    items.append(a)
+                    log(f"[{n}/{len(ids)}] {vid}: {(a.get('desc') or '').strip()[:60]}")
+                elif src:
+                    title = re.sub(r"\s*-\s*抖音\s*$", "", page.title() or "").strip()
+                    it = dom_to_aweme({"id": vid, "cover": "", "title": title})
+                    it["video"]["play_addr"] = {"url_list": [src]}
+                    items.append(it)
+                    log(f"[{n}/{len(ids)}] {vid}: lấy link từ trình phát (không có thumbnail). {title[:50]}")
+                else:
+                    failed.append(vid)
+                    log(f"[{n}/{len(ids)}] {vid}: KHÔNG lấy được link video (video riêng tư/đã gỡ, "
+                        "hoặc Douyin bắt đăng nhập)")
+                prog(n, len(ids))
+            if failed and not items:
+                log("Không lấy được video nào. Cửa sổ Chrome sẽ hiện ra: đăng nhập Douyin (nếu cần) rồi bấm "
+                    "'Đã đăng nhập xong - Tiếp tục', sau đó bấm tải lại.")
+                if hidden:
+                    try:
+                        cdp = ctx.new_cdp_session(page)
+                        wid = cdp.send("Browser.getWindowForTarget")["windowId"]
+                        cdp.send("Browser.setWindowBounds", {"windowId": wid, "bounds": {"windowState": "normal"}})
+                        cdp.send("Browser.setWindowBounds",
+                                 {"windowId": wid, "bounds": {"left": 80, "top": 40, "width": 1280, "height": 900}})
+                    except Exception:
+                        pass
+
+                def ready():
+                    page.wait_for_timeout(200)
+                    return False
+                wait_user(ready)
+            ua = page.evaluate("navigator.userAgent")
+            cookies = ctx.cookies()
+        finally:
+            try:
+                ctx.close()
+            except Exception:
+                pass  # Chrome đã tự đóng (người dùng tắt cửa sổ): giữ lỗi gốc, không che bằng lỗi đóng
+    if stop.is_set():
+        raise Stopped()
+    log(f"Lấy thông tin xong: {len(items)}/{len(ids)} video" + (f", lỗi {len(failed)}" if failed else "") + ".")
+    return dict(items=items, cookies=cookies, ua=ua, total=len(ids), failed=failed,
+                browser=dict(profile=cfg["profile"], channel=cfg.get("channel"), hidden=hidden))
+
+
 def open_for_login(cfg, log, prog, wait_user, stop):
     """Mở Chrome (cùng profile với lúc lấy danh sách) tới douyin.com để người dùng tự đăng nhập
     (quét mã QR). Đăng nhập được lưu trong profile, các lần sau không phải làm lại.

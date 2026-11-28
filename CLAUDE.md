@@ -21,11 +21,12 @@ Thư mục `NimoKidsTool` cũ (repo gốc) đã bỏ; **từ nay chỉ phát tri
   Hai giao diện (Tkinter và web) chỉ **import** và gọi, **KHÔNG chép / viết lại nghiệp vụ** trong `desktop/` hay `web/`.
 - `nimokids_core/` ở đây là **nguồn sự thật duy nhất** (không còn bản copy nào khác): sửa thẳng ở đây,
   cả bản máy tính lẫn bản web tự nhận theo. Dockerfile COPY thư mục này vào image.
-- **Một số phiên bản cho cả hai bản:** `nimokids_core/__init__.py` → `__version__` (hiện 2.12.2).
+- **Một số phiên bản cho cả hai bản:** `nimokids_core/__init__.py` → `__version__` (hiện 2.13.0).
   Bản web đọc version này động (hiện trên tiêu đề trang + API /health).
 - Hợp đồng gọi hàm (mọi tác vụ dài): `fn(cfg, log, prog, stop[, wait_user])`
   - `cfg`: dict cấu hình · `log(msg)`: ghi nhật ký · `prog(value, max)`: tiến độ · `stop`: threading.Event (bật → ném `Stopped`).
   - `douyin.collect_list(cfg, log, prog, wait_user, stop)` → dict(items, cookies, ua, total)
+  - `douyin.fetch_videos(cfg, log, prog, wait_user, stop)` (video lẻ từ link, cfg["text"]) → cùng dạng collect_list
   - `douyin.download_items(cfg, res, log, prog, stop)` · `compile.run_compile(cfg, log, prog, stop, dry=)` · `subtitles.run_transcribe(cfg, log, prog, stop)`
 
 ## Định danh hạ tầng (theo quy chuẩn Docker riêng của Truong)

@@ -35,7 +35,8 @@ from nimokids_core.common import (Stopped, app_data_dir, fmt_duration, fmt_time)
 from nimokids_core.compile import (detect_cn_region, ensure_rapidocr, list_clips, make_logo_png, pick_clips, preview_frame,
                                    run_compile)
 from nimokids_core.titles import detect_texts
-from nimokids_core.douyin import (collect_list, download_items, is_downloaded, parse_channel_link)
+from nimokids_core.douyin import (collect_list, download_items, fetch_videos, is_downloaded, parse_channel_link,
+                                  parse_video_links)
 from nimokids_core.subtitles import (SPOKEN_LANGS, VIDEO_EXT, WHISPER_MODELS, has_nvidia, run_transcribe)
 
 DEFAULT_URL = "https://www.douyin.com/user/MS4wLjABAAAAqpNISE46Jp14stf1jE4MoIXaWtQ9Gq-NPmPB5fG7M_Fk7T_aocX0ZDml2SIdaZ09"
@@ -128,16 +129,19 @@ def run_gui():
                     set_bar(v, mx)
                 elif kind == "done":
                     set_busy(False)
-                    go_btn.configure(state="disabled")
+                    for gb in (go_btn, go_btn2):
+                        gb.configure(state="disabled")
                     if val:
                         messagebox.showinfo("Nimo Kids Tool", val)
                 elif kind == "fail":
                     set_busy(False)
-                    go_btn.configure(state="disabled")
+                    for gb in (go_btn, go_btn2):
+                        gb.configure(state="disabled")
                     log("LỖI: " + val)
                     messagebox.showerror("Có lỗi", val)
                 elif kind == "waiting":
-                    go_btn.configure(state="normal")
+                    for gb in (go_btn, go_btn2):
+                        gb.configure(state="normal")
                 elif kind == "call":
                     val()
         except queue.Empty:
@@ -477,6 +481,80 @@ def run_gui():
     ttk.Label(t1, foreground="#666", text="Bấm ô vuông ở tiêu đề cột 'Chọn' để chọn/bỏ chọn tất cả; bấm ô ở từng dòng để "
               "tích riêng. Giữ Shift/Ctrl bôi đen nhiều dòng rồi bấm Space. Mặc định tích sẵn video chưa tải.").grid(
         row=9, column=0, columnspan=2, sticky="w")
+
+    # ======================= TAB 1b: TẢI VIDEO TỪ LINK =======================
+    t1b = ttk.Frame(nb, padding=12)
+    nb.add(t1b, text="1b. Tải video từ link")
+    t1b.columnconfigure(1, weight=1)
+    v_lk_out = tk.StringVar(value=settings.get("link_out", DEFAULT_OUT))
+    ttk.Label(t1b, text="Link video (mỗi dòng một link):").grid(row=0, column=0, columnspan=2, sticky="w")
+    lk_txt = tk.Text(t1b, height=7, wrap="none", font=("Consolas", 9))
+    lk_txt.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(2, 4))
+    lk_txt.insert("1.0", settings.get("link_text", ""))
+    ttk.Label(t1b, foreground="#666", text="Nhận: douyin.com/video/<id>, link có modal_id=<id> (ví dụ trang "
+              "user/self?...&modal_id=...), link chia sẻ v.douyin.com/..., hoặc chỉ số ID.").grid(
+        row=2, column=0, columnspan=2, sticky="w")
+    lf_ = ttk.Frame(t1b)
+    ttk.Entry(lf_, textvariable=v_lk_out).pack(side="left", fill="x", expand=True)
+    ttk.Button(lf_, text="Chọn...", command=lambda: browse_dir(v_lk_out)).pack(side="left", padx=(6, 0))
+    ttk.Button(lf_, text="Mở", width=5, command=lambda: open_path(v_lk_out)).pack(side="left", padx=(4, 0))
+    ttk.Label(t1b, text="Lưu vào thư mục:").grid(row=3, column=0, sticky="w", pady=3)
+    lf_.grid(row=3, column=1, sticky="ew", pady=3)
+    ttk.Label(t1b, foreground="#666", text="Video tải về là bản KHÔNG có watermark Douyin (link phát gốc). Dùng chung "
+              "trình duyệt, 'Chạy ẩn Chrome' và 'Tải kèm thumbnail' với tab 1.").grid(
+        row=4, column=0, columnspan=2, sticky="w")
+    lk_status = ttk.Label(t1b, text="Dán link rồi bấm 'Tải video'.", foreground="#666")
+
+    def lk_count(_=None):
+        ids, shorts = parse_video_links(lk_txt.get("1.0", "end"))
+        n = len(ids) + len(shorts)
+        lk_status.configure(text=f"Nhận ra {n} video." if n else "Chưa nhận ra link video nào.",
+                            foreground="#0a7a2f" if n else "#666")
+    lk_txt.bind("<KeyRelease>", lk_count)
+    lk_txt.bind("<<Paste>>", lambda e: root.after(50, lk_count))
+
+    def do_link_download():
+        text = lk_txt.get("1.0", "end")
+        ids, shorts = parse_video_links(text)
+        if not ids and not shorts:
+            messagebox.showwarning("Chưa có link", "Dán ít nhất 1 link video Douyin.")
+            return
+        out = v_lk_out.get().strip()
+        if not out:
+            messagebox.showwarning("Chưa chọn thư mục", "Chọn thư mục lưu video.")
+            return
+        cfg = dict(text=text, out=out, profile=str(app_data_dir() / "browser_profile"), channel=v_channel.get(),
+                   hidden=v_hidden.get(), thumbs=v_thumbs.get(), sleep=float(v_sleep.get()))
+
+        def wait_user(ready=None):
+            q.put(("waiting", None))
+            while not user_go.is_set():
+                if stop.is_set() or (ready and ready()):
+                    break
+                time.sleep(0.3)
+
+        def work():
+            res = fetch_videos(cfg, log, prog, wait_user, stop)
+            if not res["items"]:
+                raise RuntimeError("Không lấy được video nào từ các link này.")
+            r = download_items(cfg, res, log, prog, stop)
+            if res["failed"]:
+                r += f"\nKhông lấy được {len(res['failed'])} video: " + ", ".join(res["failed"][:10])
+            q.put(("call", lambda: v_cmp_folder.set(out)))
+            return r
+
+        start_worker(work, lambda r: r)
+
+    lb_ = ttk.Frame(t1b)
+    lb_.grid(row=5, column=0, columnspan=2, sticky="w", pady=(8, 0))
+    b = ttk.Button(lb_, text="Tải video", command=do_link_download)
+    b.pack(side="left")
+    all_buttons.append(b)
+    go_btn2 = ttk.Button(lb_, text="Đã đăng nhập xong - Tiếp tục", state="disabled",
+                         command=lambda: (user_go.set(), go_btn2.configure(state="disabled")))
+    go_btn2.pack(side="left", padx=8)
+    lk_status.grid(row=6, column=0, columnspan=2, sticky="w", pady=(6, 2))
+    lk_count()
 
     # ======================= TAB 2: GHÉP VIDEO =======================
     t2 = ttk.Frame(nb, padding=12)
@@ -890,6 +968,7 @@ def run_gui():
     pump()
     def on_close():
         save_settings(dict(url=v_url.get(), out=v_out.get(), cmp_folder=v_cmp_folder.get(),
+                           link_out=v_lk_out.get(), link_text=lk_txt.get("1.0", "end").strip(),
                            cmp_out=v_cmp_out.get(), sub_src=v_sub_src.get(),
                            cmp_vsub=v_vsub_dir.get(), cmp_titles=v_title_dir.get()))
         root.destroy()

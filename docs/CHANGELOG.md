@@ -19,6 +19,12 @@ Phiên bản hiện tại nằm ở `nimokids_core/__init__.py` (`__version__`),
 
 ---
 
+## [2.13.0] – 28/11/2026
+
+### Thêm
+- **[Lõi]** `douyin.parse_video_links` + `douyin.fetch_videos`: tải video lẻ từ link. Nhận `douyin.com/video/<id>`, link có `modal_id=<id>` (ví dụ `user/self?...&modal_id=...`), `vid=`, link chia sẻ `v.douyin.com/...` hoặc chỉ số ID; nhiều link mỗi dòng một link. Mở trang từng video bằng Chrome thật, lấy dữ liệu `aweme/detail` (link phát `play_addr`/`bit_rate`, bản KHÔNG watermark; không dùng `download_addr` có watermark), không có thì lấy link từ trình phát. Tải bằng `download_items` như tab kênh (tên file, thumbnail, bỏ qua video đã có).
+- **[Máy tính]** Tab mới "1b. Tải video từ link": ô dán nhiều link, đếm số video nhận ra, thư mục lưu, nút "Tải video" và nút tiếp tục khi Douyin bắt đăng nhập.
+
 ## [2.12.2] – 25/11/2026
 
 ### Sửa lỗi
